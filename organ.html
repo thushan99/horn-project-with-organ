@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Organ</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .keys-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .key {
+            width: 60px;
+            height: 200px;
+            margin: 2px;
+            background-color: white;
+            border: 1px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background-color 0.1s;
+        }
+
+        .key.highlight {
+            background-color: lightgreen;
+        }
+
+        .editor {
+            background-color: rgba(255, 255, 255, 0.7);
+            padding: 10px;
+            border: 1px solid black;
+            width: 300px;
+            font-family: monospace;
+        }
+
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <h1>Virtual Organ</h1>
+
+    <div class="container">
+        <div class="keys-container">
+            <div class="key" id="C4" data-frequency="261.63" data-note="C4">C4</div>
+            <div class="key" id="D4" data-frequency="293.66" data-note="D4">D4</div>
+            <div class="key" id="E4" data-frequency="329.63" data-note="E4">E4</div>
+            <div class="key" id="F4" data-frequency="349.23" data-note="F4">F4</div>
+            <div class="key" id="G4" data-frequency="392.00" data-note="G4">G4</div>
+            <div class="key" id="A4" data-frequency="440.00" data-note="A4">A4</div>
+        </div>
+
+        <div class="editor">
+            <h3>Melody:</h3>
+            <pre id="melodyOutput">int melody1[] = { };</pre>
+            <h3>Durations:</h3>
+            <pre id="durationsOutput">int durations1[] = { };</pre>
+        </div>
+    </div>
+
+    <script>
+        const keys = document.querySelectorAll('.key');
+        
+        let melody1 = [];
+        let durations1 = [];
+        
+        // Object to track key press times
+        const keyPressTimes = {};
+
+        // Add event listeners for both mouse and keyboard interactions
+        keys.forEach(key => {
+            // Mouse events
+            key.addEventListener('mousedown', (e) => handleKeyDown(key));
+            key.addEventListener('mouseup', (e) => handleKeyUp(key));
+            key.addEventListener('mouseleave', (e) => handleKeyUp(key));
+
+            // Touch events for mobile support
+            key.addEventListener('touchstart', (e) => {
+                e.preventDefault(); // Prevent default touch behavior
+                handleKeyDown(key);
+            });
+            key.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                handleKeyUp(key);
+            });
+        });
+
+        // Keyboard events
+        const keyMap = {
+            'a': 'C4', 's': 'D4', 'd': 'E4', 
+            'f': 'F4', 'g': 'G4', 'h': 'A4'
+        };
+
+        window.addEventListener('keydown', (event) => {
+            const mappedKey = keyMap[event.key];
+            if (mappedKey && !event.repeat) {
+                const key = document.getElementById(mappedKey);
+                handleKeyDown(key);
+            }
+        });
+
+        window.addEventListener('keyup', (event) => {
+            const mappedKey = keyMap[event.key];
+            if (mappedKey) {
+                const key = document.getElementById(mappedKey);
+                handleKeyUp(key);
+            }
+        });
+
+        function handleKeyDown(key) {
+            // Play sound
+            const frequency = parseFloat(key.dataset.frequency);
+            const noteName = key.dataset.note;
+
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+            oscillator.type = 'sine';
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.start();
+
+            // Store oscillator and start time
+            key.audioContext = audioContext;
+            key.oscillator = oscillator;
+            key.gainNode = gainNode;
+
+            // Record press time
+            keyPressTimes[noteName] = Date.now();
+
+            // Highlight key
+            key.classList.add('highlight');
+
+            // Add note to melody
+            melody1.push(`NOTE_${noteName}`);
+        }
+
+        function handleKeyUp(key) {
+            // Stop sound
+            if (key.oscillator) {
+                key.oscillator.stop();
+                key.audioContext.close();
+            }
+
+            // Remove highlight
+            key.classList.remove('highlight');
+
+            // Calculate duration
+            const noteName = key.dataset.note;
+            if (keyPressTimes[noteName]) {
+                const duration = Date.now() - keyPressTimes[noteName];
+                durations1.push(duration);
+
+                // Update Arduino-style code display
+                updateArduinoCode();
+
+                // Clear the press time
+                delete keyPressTimes[noteName];
+            }
+        }
+
+        // Update Arduino-style code function
+        function updateArduinoCode() {
+            const melodyCode = `int melody1[] = { ${melody1.join(', ')} };`;
+            const durationsCode = `int durations1[] = { ${durations1.join(', ')} };`;
+            document.getElementById("melodyOutput").textContent = melodyCode;
+            document.getElementById("durationsOutput").textContent = durationsCode;
+        }
+    </script>
+</body>
+</html>

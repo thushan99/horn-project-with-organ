@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔊 EPIC VIRTUAL ORGAN 🎹</title>
+    <style>
+        body {
+            font-family: 'Arial Black', sans-serif;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+            background-color: #1a1a1a;
+            color: #ff6b6b;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .keys-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .key {
+            width: 60px;
+            height: 200px;
+            margin: 2px;
+            background-color: white;
+            border: 3px solid #ff6b6b;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.1s;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            font-weight: bold;
+        }
+
+        .key.highlight {
+            background-color: #4ecdc4;
+            transform: scale(1.05);
+            box-shadow: 0 0 10px rgba(78, 205, 196, 0.7);
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .controls button {
+            background-color: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .controls button:hover {
+            background-color: #4ecdc4;
+        }
+
+        .editor {
+            background-color: rgba(255, 255, 255, 0.1);
+            padding: 10px;
+            border: 1px solid #ff6b6b;
+            width: 300px;
+            font-family: monospace;
+            color: #4ecdc4;
+        }
+
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        input {
+            width: 50px;
+            margin: 0 10px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔊 EPIC VIRTUAL ORGAN 🎹</h1>
+
+    <div class="controls">
+        <button id="replayButton">🔁 Replay</button>
+        <button id="stopButton">⏹️ Stop</button>
+        <button id="playButton">▶️ Play</button>
+        <button id="clearButton">🗑️ Clear</button>
+    </div>
+
+    <div class="container">
+        <div class="keys-container">
+            <div class="key" id="C4" data-frequency="261.63" data-note="C4">C4 (4s)</div>
+            <div class="key" id="D4" data-frequency="293.66" data-note="D4">D4 (3s)</div>
+            <div class="key" id="E4" data-frequency="329.63" data-note="E4">E4 (2s)</div>
+            <div class="key" id="F4" data-frequency="349.23" data-note="F4">F4 (1s)</div>
+            <div class="key" id="G4" data-frequency="392.00" data-note="G4">G4 (0.5s)</div>
+            <div class="key" id="A4" data-frequency="440.00" data-note="A4">A4 (0.25s)</div>
+        </div>
+
+        <div>
+            <label>Duration Multiplier: <input type="number" id="durationMultiplier" value="1" min="0.1" max="10" step="0.1"></label>
+        </div>
+
+        <div class="editor">
+            <h3>Melody:</h3>
+            <pre id="melodyOutput">int melody1[] = { };</pre>
+            <h3>Durations:</h3>
+            <pre id="durationsOutput">int durations1[] = { };</pre>
+        </div>
+    </div>
+
+    <script>
+        const keys = document.querySelectorAll('.key');
+        const replayButton = document.getElementById('replayButton');
+        const stopButton = document.getElementById('stopButton');
+        const playButton = document.getElementById('playButton');
+        const clearButton = document.getElementById('clearButton');
+        const durationMultiplier = document.getElementById('durationMultiplier');
+        
+        let melody1 = [];
+        let durations1 = [];
+        let activeOscillators = [];
+        
+        const keyPressTimes = {};
+
+        keys.forEach(key => {
+            ['mousedown', 'touchstart'].forEach(event => {
+                key.addEventListener(event, (e) => {
+                    e.preventDefault();
+                    handleKeyDown(key);
+                });
+            });
+            ['mouseup', 'mouseleave', 'touchend'].forEach(event => {
+                key.addEventListener(event, (e) => {
+                    e.preventDefault();
+                    handleKeyUp(key);
+                });
+            });
+        });
+
+        const keyMap = {
+            'a': 'C4', 's': 'D4', 'd': 'E4', 
+            'f': 'F4', 'g': 'G4', 'h': 'A4'
+        };
+
+        window.addEventListener('keydown', (event) => {
+            const mappedKey = keyMap[event.key];
+            if (mappedKey && !event.repeat) {
+                const key = document.getElementById(mappedKey);
+                handleKeyDown(key);
+            }
+        });
+
+        window.addEventListener('keyup', (event) => {
+            const mappedKey = keyMap[event.key];
+            if (mappedKey) {
+                const key = document.getElementById(mappedKey);
+                handleKeyUp(key);
+            }
+        });
+
+        function handleKeyDown(key) {
+            const frequency = parseFloat(key.dataset.frequency);
+            const noteName = key.dataset.note;
+
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+            oscillator.type = 'sine';
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.start();
+
+            key.audioContext = audioContext;
+            key.oscillator = oscillator;
+            key.gainNode = gainNode;
+
+            keyPressTimes[noteName] = Date.now();
+            key.classList.add('highlight');
+
+            melody1.push(`NOTE_${noteName}`);
+        }
+
+        function handleKeyUp(key) {
+            if (key.oscillator) {
+                key.oscillator.stop();
+                key.audioContext.close();
+            }
+
+            key.classList.remove('highlight');
+
+            const noteName = key.dataset.note;
+            if (keyPressTimes[noteName]) {
+                const rawDuration = Date.now() - keyPressTimes[noteName];
+                const adjustedDuration = rawDuration * parseFloat(durationMultiplier.value);
+                durations1.push(Math.round(adjustedDuration));
+
+                updateArduinoCode();
+                delete keyPressTimes[noteName];
+            }
+        }
+
+        function updateArduinoCode() {
+            const melodyCode = `int melody1[] = { ${melody1.join(', ')} };`;
+            const durationsCode = `int durations1[] = { ${durations1.join(', ')} };`;
+            document.getElementById("melodyOutput").textContent = melodyCode;
+            document.getElementById("durationsOutput").textContent = durationsCode;
+        }
+
+        function stopAllSounds() {
+            activeOscillators.forEach(osc => {
+                try {
+                    osc.stop();
+                    osc.disconnect();
+                } catch (e) {}
+            });
+            activeOscillators = [];
+        }
+
+        function playMelody(melody, durations) {
+            // Stop any existing sounds
+            stopAllSounds();
+            
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+            melody.forEach((note, index) => {
+                const freq = parseFloat(note.split('_')[1].replace(/[A-Z]/g, '')) * Math.pow(2, {'C':0, 'D':2, 'E':4, 'F':5, 'G':7, 'A':9}[note.split('_')[1][0]] / 12);
+                const duration = durations[index] / 1000;
+
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+
+                oscillator.frequency.setValueAtTime(freq, audioContext.currentTime + index * (duration + 0.1));
+                oscillator.type = 'sine';
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+
+                gainNode.gain.setValueAtTime(1, audioContext.currentTime);
+                gainNode.gain.exponentialDecayToValueAtTime(0.001, audioContext.currentTime + duration);
+
+                oscillator.start(index * (duration + 0.1));
+                oscillator.stop(index * (duration + 0.1) + duration);
+
+                // Track active oscillators
+                activeOscillators.push(oscillator);
+            });
+        }
+
+        replayButton.addEventListener('click', () => {
+            if (melody1.length === 0) return;
+            playMelody(melody1, durations1);
+        });
+
+        stopButton.addEventListener('click', () => {
+            stopAllSounds();
+        });
+
+        playButton.addEventListener('click', () => {
+            if (melody1.length === 0) return;
+            playMelody(melody1, durations1);
+        });
+
+        clearButton.addEventListener('click', () => {
+            // Stop any playing sounds
+            stopAllSounds();
+            
+            // Clear melody and duration arrays
+            melody1 = [];
+            durations1 = [];
+            
+            // Update display
+            updateArduinoCode();
+        });
+    </script>
+</body>
+</html>
